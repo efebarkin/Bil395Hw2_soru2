@@ -17,10 +17,12 @@ repl :-
     read_line_to_string(user_input, Input),
     (   Input == end_of_file
     ->  true
-    ;   Input == "exit"
-    ->  true
-    ;   process_input(Input),
-        repl
+    ;   string_lower(Input, LowerInput),
+        (   LowerInput == "exit"
+        ->  halt
+        ;   process_input(Input),
+            repl
+        )
     ).
 
 % Process user input
@@ -75,8 +77,13 @@ convert_token(Token, Term) :-
     (   % Try to convert to number
         number_string(Number, Token)
     ->  Term = Number
+    ;   % Handle parentheses specifically
+        Token == "("
+    ->  Term = '('
+    ;   Token == ")"
+    ->  Term = ')'
     ;   % Check if it's an operator
-        member(Token, ["+", "-", "*", "/", "^", "=", "(", ")"])
+        member(Token, ["+", "-", "*", "/", "^", "="])
     ->  atom_string(Term, Token)
     ;   % Otherwise it's a variable
         atom_string(Term, Token)
@@ -85,6 +92,7 @@ convert_token(Token, Term) :-
 % Parse expression
 parse_expression([Var, '='|Rest], Result, []) :-
     atom(Var),  % Variable name
+    \+ member(Var, ['(', ')', '+', '-', '*', '/', '^']), % Make sure it's not an operator or parenthesis
     parse_expr(Rest, Value, []),
     retractall(var_value(Var, _)),
     assertz(var_value(Var, Value)),
@@ -140,16 +148,19 @@ parse_factor_rest(Result, Rest, Result, Rest).
 parse_primary([Number|Rest], Number, Rest) :-
     number(Number), !.
 parse_primary([Var|Rest], Value, Rest) :-
-    atom(Var), !,
+    atom(Var), 
+    \+ member(Var, ['(', ')', '+', '-', '*', '/', '^', '=']), !,
     (   var_value(Var, Value)
     ->  true
     ;   throw(error(undefined_variable(Var), _))
     ).
 parse_primary(['('|Rest], Result, FinalRest) :-
     !,
-    parse_expr(Rest, Result, [')'|NewRest]),
-    !,
-    FinalRest = NewRest.
+    parse_expr(Rest, Result, TempRest),
+    (   TempRest = [')'|NewRest]
+    ->  FinalRest = NewRest
+    ;   throw(error(missing_closing_parenthesis, _))
+    ).
 parse_primary(['-'|Rest], Result, FinalRest) :-
     !,
     parse_primary(Rest, Value, FinalRest),
@@ -162,8 +173,10 @@ handle_error(error(division_by_zero, _)) :-
     writeln('Error: Division by zero').
 handle_error(error(undefined_variable(Var), _)) :-
     format('Error: Undefined variable ~w~n', [Var]).
-handle_error(error(syntax_error(_), _)) :-
-    writeln('Error: Syntax error in expression').
+handle_error(error(syntax_error(Tokens), _)) :-
+    format('Error: Syntax error in expression ~w~n', [Tokens]).
+handle_error(error(missing_closing_parenthesis, _)) :-
+    writeln('Error: Missing closing parenthesis').
 handle_error(Error) :-
     format('Error: ~w~n', [Error]).
 

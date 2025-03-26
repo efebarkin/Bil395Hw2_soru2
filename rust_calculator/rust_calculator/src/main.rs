@@ -131,66 +131,145 @@ impl Calculator {
     }
 
     fn parse_addition_subtraction(&mut self, tokens: &[Token]) -> Result<f64, ParseError> {
-        let mut result = self.parse_multiplication_division(tokens)?;
-        let mut i = 0;
-
-        while i < tokens.len() {
+        // First, find all terms separated by + and -
+        let mut terms = Vec::new();
+        let mut operators = Vec::new();
+        let mut start = 0;
+        let mut depth = 0;
+        
+        for i in 0..tokens.len() {
             match &tokens[i] {
-                Token::Plus => {
-                    result += self.parse_multiplication_division(&tokens[i + 1..])?;
-                    break;
-                }
-                Token::Minus => {
-                    result -= self.parse_multiplication_division(&tokens[i + 1..])?;
-                    break;
-                }
-                _ => i += 1,
+                Token::LeftParen => depth += 1,
+                Token::RightParen => depth -= 1,
+                Token::Plus | Token::Minus if depth == 0 => {
+                    terms.push(&tokens[start..i]);
+                    operators.push(&tokens[i]);
+                    start = i + 1;
+                },
+                _ => {}
             }
         }
-
+        
+        // Add the last term
+        if start < tokens.len() {
+            terms.push(&tokens[start..]);
+        }
+        
+        // If there's only one term, it's just multiplication/division
+        if terms.len() == 1 {
+            return self.parse_multiplication_division(terms[0]);
+        }
+        
+        // Evaluate the first term
+        let mut result = self.parse_multiplication_division(terms[0])?;
+        
+        // Apply operators in order
+        for i in 0..operators.len() {
+            match operators[i] {
+                Token::Plus => result += self.parse_multiplication_division(terms[i+1])?,
+                Token::Minus => result -= self.parse_multiplication_division(terms[i+1])?,
+                _ => unreachable!(),
+            }
+        }
+        
         Ok(result)
     }
 
     fn parse_multiplication_division(&mut self, tokens: &[Token]) -> Result<f64, ParseError> {
-        let mut result = self.parse_power(tokens)?;
-        let mut i = 0;
-
-        while i < tokens.len() {
+        // First, find all factors separated by * and /
+        let mut factors = Vec::new();
+        let mut operators = Vec::new();
+        let mut start = 0;
+        let mut depth = 0;
+        
+        for i in 0..tokens.len() {
             match &tokens[i] {
-                Token::Multiply => {
-                    result *= self.parse_power(&tokens[i + 1..])?;
-                    break;
-                }
+                Token::LeftParen => depth += 1,
+                Token::RightParen => depth -= 1,
+                Token::Multiply | Token::Divide if depth == 0 => {
+                    factors.push(&tokens[start..i]);
+                    operators.push(&tokens[i]);
+                    start = i + 1;
+                },
+                _ => {}
+            }
+        }
+        
+        // Add the last factor
+        if start < tokens.len() {
+            factors.push(&tokens[start..]);
+        }
+        
+        // If there's only one factor, it's just exponentiation
+        if factors.len() == 1 {
+            return self.parse_power(factors[0]);
+        }
+        
+        // Evaluate the first factor
+        let mut result = self.parse_power(factors[0])?;
+        
+        // Apply operators in order
+        for i in 0..operators.len() {
+            match operators[i] {
+                Token::Multiply => result *= self.parse_power(factors[i+1])?,
                 Token::Divide => {
-                    let divisor = self.parse_power(&tokens[i + 1..])?;
+                    let divisor = self.parse_power(factors[i+1])?;
                     if divisor == 0.0 {
                         return Err(ParseError::DivisionByZero);
                     }
                     result /= divisor;
-                    break;
-                }
-                _ => i += 1,
+                },
+                _ => unreachable!(),
             }
         }
-
+        
         Ok(result)
     }
 
     fn parse_power(&mut self, tokens: &[Token]) -> Result<f64, ParseError> {
-        let mut result = self.parse_primary(tokens)?;
-        let mut i = 0;
-
-        while i < tokens.len() {
+        // First, find all bases and exponents separated by ^
+        let mut bases = Vec::new();
+        let mut operators = Vec::new();
+        let mut start = 0;
+        let mut depth = 0;
+        
+        for i in 0..tokens.len() {
             match &tokens[i] {
-                Token::Power => {
-                    let exponent = self.parse_primary(&tokens[i + 1..])?;
-                    result = result.powf(exponent);
-                    break;
-                }
-                _ => i += 1,
+                Token::LeftParen => depth += 1,
+                Token::RightParen => depth -= 1,
+                Token::Power if depth == 0 => {
+                    bases.push(&tokens[start..i]);
+                    operators.push(&tokens[i]);
+                    start = i + 1;
+                },
+                _ => {}
             }
         }
-
+        
+        // Add the last base/exponent
+        if start < tokens.len() {
+            bases.push(&tokens[start..]);
+        }
+        
+        // If there's only one base, it's just a primary
+        if bases.len() == 1 {
+            return self.parse_primary(bases[0]);
+        }
+        
+        // Evaluate right to left for exponentiation
+        let mut result = self.parse_primary(bases[bases.len()-1])?;
+        
+        // Apply operators in reverse order
+        for i in (0..operators.len()).rev() {
+            match operators[i] {
+                Token::Power => {
+                    let base = self.parse_primary(bases[i])?;
+                    result = base.powf(result);
+                },
+                _ => unreachable!(),
+            }
+        }
+        
         Ok(result)
     }
 

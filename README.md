@@ -79,7 +79,9 @@ The Rust calculator uses a combination of lexing and parsing techniques with Rus
 - **Memory Safety**: Leverages Rust's ownership model for safe memory management
 
 ### How to Run
+### dosyalar ic ice oldugu icin 2 kere cd rust_calculator yapin
 ``` 
+cd rust_calculator
 cd rust_calculator
 cargo run
 ```
